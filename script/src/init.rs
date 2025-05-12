@@ -1,4 +1,5 @@
 use crate::db::RemoteDb;
+use crate::fetcher;
 use crate::SP1RethArgs;
 use alloy_providers::provider::HttpProvider;
 use alloy_providers::provider::TempProvider;
@@ -7,10 +8,12 @@ use alloy_transport_http::Http;
 use anyhow::Result;
 use async_trait::async_trait;
 use reth_primitives::Bytes;
+use reth_primitives::{Address, U256};
 use sp1_reth_primitives::alloy2reth::IntoReth;
 use sp1_reth_primitives::mpt::proofs_to_tries;
 use sp1_reth_primitives::processor::EvmProcessor;
 use sp1_reth_primitives::SP1RethInput;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use url::Url;
 
@@ -47,12 +50,16 @@ impl SP1RethInputInitializer for SP1RethInput {
             BlockTransactions::Full(txs) => txs.into_iter().map(|tx| tx.into_reth()).collect(),
             _ => unreachable!(),
         };
+
+        //TODO get the prestate by debug_TraceTransaction
+
         let withdrawals = block
             .withdrawals
             .unwrap()
             .into_iter()
             .map(|w| w.into_reth())
             .collect();
+
         let input = SP1RethInput {
             beneficiary: block.header.miner,
             gas_limit: block.header.gas_limit.try_into().unwrap(),

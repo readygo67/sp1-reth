@@ -1,4 +1,5 @@
 pub mod db;
+pub mod fetcher;
 pub mod init;
 
 use crate::init::SP1RethInputInitializer;
@@ -69,4 +70,37 @@ async fn main() {
         .expect("saving proof failed");
 
     println!("succesfully generated and verified proof for the program!")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_build_input() {
+        let fetcher =
+            fetcher::Fetcher::new("http://192.168.3.26:8545").expect("Failed to create fetcher");
+
+        let block_number = fetcher
+            .get_block_number()
+            .await
+            .expect("Failed to get block number");
+        println!("Current block number: {}", block_number);
+
+        let args = SP1RethArgs {
+            rpc_url: "https://ethereum.blockpi.network/v1/rpc/public".to_string(),
+            block_number: block_number - 2,
+            use_cache: true,
+        };
+
+        let input = SP1RethInput::initialize(&args).await.unwrap();
+        let file_path = format!("{}.bin", args.block_number);
+        let mut file = File::create(&file_path).expect("unable to open file");
+        bincode::serialize_into(&mut file, &input).expect("unable to serialize input");
+
+        // 2. 加载并校验
+        let file = File::open(&file_path).expect("unable to reopen file");
+        let deserialized: SP1RethInput = bincode::deserialize_from(file)
+            .expect("unable to des  assert_eq!(deserialized.timestamp, input.timestamp");
+    }
 }
