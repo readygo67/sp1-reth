@@ -82,8 +82,8 @@ impl Fetcher {
             map.insert(
                 format!("{:?}", addr), // 可选: addr.to_string() 也可以
                 PrestateAccount {
-                    nonce: format!("0x{:x}", state.nonce.unwrap_or(0)),
-                    balance: format!("0x{:x}", state.balance.unwrap_or_default()),
+                    nonce: format!("{:x}", state.nonce.unwrap_or(0)),
+                    balance: format!("{:x}", state.balance.unwrap_or_default()),
                     code: state.code.as_ref().map(|c| format!("0x{}", hex::encode(c))),
                     storage: if state.storage.is_empty() {
                         None
@@ -157,7 +157,7 @@ mod tests {
     //         .expect("Fail to get block");
     //     println!("block: {:#?}", block);
     // }
-
+    /*
     #[tokio::test]
     async fn test_trace_block() {
         let rpc_url = "http://192.168.3.26:8545"; // 替换成你自己的 RPC URL
@@ -179,4 +179,5 @@ mod tests {
             println!("prestate: {:#?}", prestate);
         }
     }
+    */
 }

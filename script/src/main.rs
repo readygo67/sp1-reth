@@ -78,18 +78,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_input() {
-        let fetcher =
-            fetcher::Fetcher::new("http://192.168.3.26:8545").expect("Failed to create fetcher");
+        let rpc_url = "http://192.168.3.26:8545";
+        let fetcher = fetcher::Fetcher::new(rpc_url).expect("Failed to create fetcher");
 
         let block_number = fetcher
             .get_block_number()
             .await
             .expect("Failed to get block number");
+
+        let block_number = block_number - 1;
         println!("Current block number: {}", block_number);
 
         let args = SP1RethArgs {
-            rpc_url: "https://ethereum.blockpi.network/v1/rpc/public".to_string(),
-            block_number: block_number - 2,
+            rpc_url: rpc_url.to_string(),
+            block_number: block_number,
             use_cache: true,
         };
 

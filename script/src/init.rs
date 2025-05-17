@@ -1,5 +1,5 @@
 use crate::db::RemoteDb;
-use crate::fetcher;
+use crate::fetcher::{Fetcher, PrestateAccount};
 use crate::SP1RethArgs;
 use alloy_providers::provider::HttpProvider;
 use alloy_providers::provider::TempProvider;
@@ -7,14 +7,17 @@ use alloy_rpc_types::BlockTransactions;
 use alloy_transport_http::Http;
 use anyhow::Result;
 use async_trait::async_trait;
+use reth_primitives::keccak256;
+use reth_primitives::revm_primitives::{Account, AccountInfo, HashMap, B256};
 use reth_primitives::Bytes;
-use reth_primitives::{Address, U256};
+use reth_primitives::{Address, Bytecode, U256};
+use revm::db::{DbAccount, InMemoryDB};
 use sp1_reth_primitives::alloy2reth::IntoReth;
 use sp1_reth_primitives::mpt::proofs_to_tries;
 use sp1_reth_primitives::processor::EvmProcessor;
 use sp1_reth_primitives::SP1RethInput;
-use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::str::FromStr;
 use url::Url;
 
 #[async_trait]
@@ -42,8 +45,9 @@ impl SP1RethInputInitializer for SP1RethInput {
             .await?
             .unwrap();
 
+        // println!("block transactions: {:#?}", block.transactions);
         // Intiialize the db.
-        let provider_db = RemoteDb::new(provider, parent_header.number.unwrap().as_limbs()[0]);
+        let mut provider_db = RemoteDb::new(provider, parent_header.number.unwrap().as_limbs()[0]);
 
         // Create the input.
         let txs = match block.transactions {
@@ -51,7 +55,54 @@ impl SP1RethInputInitializer for SP1RethInput {
             _ => unreachable!(),
         };
 
-        //TODO get the prestate by debug_TraceTransaction
+        let fetcher = Fetcher::new(&args.rpc_url)?;
+        let prestates = fetcher.trace_block(args.block_number).await?;
+        println!("success get prestates");
+        //TODO 用prestates 中的值初始化 provider_db中的init_db
+        let initial_db = &mut provider_db.initial_db;
+
+        for (_tx_hash, accounts) in prestates {
+            for (addr_str, account) in accounts {
+                let addr = addr_str.parse::<Address>().unwrap_or_else(|_| {
+                    panic!("Invalid address string from trace: {}", addr_str);
+                });
+
+                // update balance and nonce
+                let mut account_info = AccountInfo::default();
+                account_info.balance = U256::from_str(&account.balance).unwrap();
+                account_info.nonce = u64::from_str(&account.nonce).unwrap();
+
+                // update code
+                if let Some(code_str) = &account.code {
+                    if let Ok(code_bytes) = hex::decode(code_str.trim_start_matches("0x")) {
+                        let bytecode = Bytecode::new_raw(code_bytes.clone().into());
+                        let code_hash = keccak256(&code_bytes); // 需要 hash 模块支持
+
+                        // 保存到 contracts 中
+                        initial_db.contracts.insert(code_hash, bytecode.0.clone());
+                        account_info.code_hash = code_hash;
+                        account_info.code = Some(bytecode.0);
+                    }
+                }
+
+                let mut db_account = DbAccount {
+                    info: account_info,
+                    account_state: Default::default(),
+                    storage: HashMap::new(),
+                };
+
+                // 加入存储
+                if let Some(storage) = &account.storage {
+                    for (k, v) in storage {
+                        let key = U256::from_str_radix(k.trim_start_matches("0x"), 16).unwrap();
+                        let value = U256::from_str_radix(v.trim_start_matches("0x"), 16).unwrap();
+                        db_account.storage.insert(key, value);
+                    }
+                }
+                // 写入 accounts 映射
+                initial_db.accounts.insert(addr, db_account);
+            }
+        }
 
         let withdrawals = block
             .withdrawals
